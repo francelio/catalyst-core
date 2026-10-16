@@ -1,0 +1,121 @@
+{
+  "name": "Site Catalyst Core – Formulário → WhatsApp (Chatwoot)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contato-site",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://www.catalystcore.cloud,https://catalystcore.cloud"
+        }
+      },
+      "id": "17c5731d-c381-4c8d-8f93-3d22a2c5f7e7",
+      "name": "Formulário do site",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "fa55fc97-49d4-4219-afaf-0e47ac7005be"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valida e normaliza os dados enviados pelo formulário do site\nconst body = $input.first().json.body || {};\n\n// Anti-spam: campo invisível no formulário. Gente de verdade não preenche.\nif (body.website) {\n  return [{ json: { ok: false, spam: true, erro: 'spam' } }];\n}\n\nconst nome = String(body.nome || '').trim().slice(0, 120);\nconst email = String(body.email || '').trim().toLowerCase().slice(0, 160);\nlet digits = String(body.whatsapp || '').replace(/\\D/g, '');\nif (digits.length === 10 || digits.length === 11) digits = '55' + digits; // adiciona o DDI do Brasil\n\nconst erros = [];\nif (nome.length < 2) erros.push('nome');\nif (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)) erros.push('email');\nif (!/^55\\d{10,11}$/.test(digits)) erros.push('whatsapp');\n\nif (erros.length) {\n  return [{ json: { ok: false, erro: 'Campos inválidos: ' + erros.join(', ') } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    nome,\n    email,\n    whatsapp: String(body.whatsapp || '').trim(),\n    telefoneDigitos: digits,\n    pagina: String(body.pagina || '').slice(0, 300),\n    recebidoEm: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),\n  },\n}];"
+      },
+      "id": "57dfca6c-6bc6-45cb-9ff5-6f935a441ac5",
+      "name": "Validar dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.ok || $json.spam === true }) }}",
+        "options": {
+          "responseCode": "={{ ($json.ok || $json.spam) ? 200 : 400 }}"
+        }
+      },
+      "id": "afe6301b-66fd-4f15-8082-0bd5ca4b8af3",
+      "name": "Responder ao site",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// CONFIGURAÇÃO: preencha antes de ativar o fluxo\n// =====================================================================\nconst CONFIG = {\n  chatwootUrl: 'https://chatwoot.catalystcore.cloud', // endereço do seu Chatwoot\n  accountId: 1,            // número que aparece na URL do Chatwoot: /app/accounts/1/...\n  inboxId: 0,              // ID da caixa de entrada do WhatsApp (Configurações > Caixas de entrada)\n  apiToken: 'COLE_AQUI_O_TOKEN', // Perfil > Token de acesso (Access Token)\n  avisoPara: '5511993439117',    // quem recebe o aviso de novo contato (DDI + DDD + número)\n  enviarBoasVindas: true,        // manda mensagem automática para quem preencheu o formulário\n};\n// =====================================================================\n\nconst lead = $input.first().json;\nif (!lead.ok) return [{ json: { ignorado: true, motivo: lead.erro } }];\n\nconst base = CONFIG.chatwootUrl.replace(/\\/$/, '') + '/api/v1/accounts/' + CONFIG.accountId;\nconst api = (method, path, body) => this.helpers.httpRequest({\n  method,\n  url: base + path,\n  headers: { api_access_token: CONFIG.apiToken },\n  body,\n  json: true,\n});\n\n// Encontra ou cria o contato e devolve { contato, conversaId }\nasync function abrirConversa({ nome, digitos, email }) {\n  // 1. procura o contato pelo telefone\n  const busca = await api('GET', '/contacts/search?q=' + encodeURIComponent(digitos));\n  let contato = (busca.payload || []).find(c => String(c.phone_number || '').replace(/\\D/g, '') === digitos);\n\n  // 2. cria se não existir\n  if (!contato) {\n    const novo = { inbox_id: CONFIG.inboxId, name: nome, phone_number: '+' + digitos };\n    if (email) novo.email = email;\n    let r;\n    try {\n      r = await api('POST', '/contacts', novo);\n    } catch (e) {\n      delete novo.email; // e-mail já usado por outro contato: cria só com o telefone\n      r = await api('POST', '/contacts', novo);\n    }\n    contato = r.payload.contact || r.payload;\n  }\n\n  // 3. garante o vínculo do contato com a caixa de WhatsApp\n  const det = await api('GET', '/contacts/' + contato.id);\n  const vinculos = (det.payload && det.payload.contact_inboxes) || [];\n  let vinculo = vinculos.find(v => v.inbox && v.inbox.id === CONFIG.inboxId);\n  if (!vinculo) {\n    vinculo = await api('POST', '/contacts/' + contato.id + '/contact_inboxes', { inbox_id: CONFIG.inboxId, source_id: digitos });\n  }\n\n  // 4. reaproveita conversa aberta ou cria uma nova\n  const convs = await api('GET', '/contacts/' + contato.id + '/conversations');\n  let conversa = (convs.payload || []).find(c => c.inbox_id === CONFIG.inboxId && c.status !== 'resolved');\n  if (!conversa) {\n    conversa = await api('POST', '/conversations', {\n      source_id: vinculo.source_id,\n      inbox_id: CONFIG.inboxId,\n      contact_id: contato.id,\n      status: 'open',\n    });\n  }\n  return { contato, conversaId: conversa.id };\n}\n\nconst enviar = (conversaId, content, privado = false) =>\n  api('POST', '/conversations/' + conversaId + '/messages', { content, message_type: 'outgoing', private: privado });\n\nconst resultado = { lead: null, aviso: null, erros: [] };\nconst primeiroNome = lead.nome.split(' ')[0];\n\nconst resumo =\n  '🚀 *Novo contato pelo site*\\n\\n' +\n  '*Nome:* ' + lead.nome + '\\n' +\n  '*E-mail:* ' + lead.email + '\\n' +\n  '*WhatsApp:* ' + lead.whatsapp + '\\n' +\n  '*Recebido em:* ' + lead.recebidoEm +\n  (lead.pagina ? '\\n*Página:* ' + lead.pagina : '');\n\n// A) Conversa com quem preencheu: nota interna com os dados + boas-vindas\ntry {\n  const { conversaId } = await abrirConversa({ nome: lead.nome, digitos: lead.telefoneDigitos, email: lead.email });\n  await enviar(conversaId, resumo + '\\n\\nOrigem: formulário \"Conte o que você precisa construir\".', true);\n  if (CONFIG.enviarBoasVindas) {\n    await enviar(conversaId,\n      'Olá, ' + primeiroNome + '! Aqui é da Catalyst Core. 👋\\n\\n' +\n      'Recebemos seu contato pelo site. Para adiantar, conte em poucas palavras o que você precisa construir ' +\n      '(sistema, app, site, agente de IA ou automação) e, se tiver, o prazo desejado.\\n\\n' +\n      'Um especialista vai falar com você em até 24 horas.');\n  }\n  resultado.lead = { conversaId };\n} catch (e) {\n  resultado.erros.push('lead: ' + (e.message || e));\n}\n\n// B) Aviso para o número da equipe\nconst aviso = String(CONFIG.avisoPara).replace(/\\D/g, '');\nif (aviso && aviso !== lead.telefoneDigitos) {\n  try {\n    const { conversaId } = await abrirConversa({ nome: 'Equipe Catalyst Core', digitos: aviso });\n    await enviar(conversaId, resumo + '\\n\\nResponda pelo Chatwoot ou no WhatsApp: https://wa.me/' + lead.telefoneDigitos);\n    resultado.aviso = { conversaId };\n  } catch (e) {\n    resultado.erros.push('aviso: ' + (e.message || e));\n  }\n}\n\nreturn [{ json: resultado }];"
+      },
+      "id": "722723e5-ba7a-4470-b8ed-3d4aa20eacfe",
+      "name": "Enviar no WhatsApp (Chatwoot)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Formulário do site → WhatsApp\n\n1. Abra o nó **Enviar no WhatsApp (Chatwoot)** e preencha o bloco `CONFIG` (URL do Chatwoot, accountId, inboxId e token).\n2. Ative o fluxo (canto superior direito).\n3. Copie a **Production URL** do nó *Formulário do site* e coloque em `formEndpoint` no `js/catalyst.js` do site.\n\nO site recebe a resposta na hora; o envio para o Chatwoot acontece logo depois.",
+        "height": 260,
+        "width": 420
+      },
+      "id": "9bdca576-d23e-4cb8-936f-ae60a075508a",
+      "name": "Leia-me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -320
+      ]
+    }
+  ],
+  "connections": {
+    "Formulário do site": {
+      "main": [
+        [
+          {
+            "node": "Validar dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar dados": {
+      "main": [
+        [
+          {
+            "node": "Responder ao site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder ao site": {
+      "main": [
+        [
+          {
+            "node": "Enviar no WhatsApp (Chatwoot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

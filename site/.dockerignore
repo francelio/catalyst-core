@@ -1,0 +1,10 @@
+# Não publicar arquivos internos nem o que o site não usa
+.git
+.gitignore
+Dockerfile
+.dockerignore
+nginx.conf
+*.md
+assets/videos
+css/main-RTL.css
+**/*.html.bak
