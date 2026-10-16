@@ -1,3 +1,104 @@
-node_modules
-dist
-dist-preview
+# =========================================================
+# Catalyst Core – .gitignore
+# Repositório: francelio/catalyst-core (raiz: C:\Projetos\catalystcore)
+# O site publicado no Coolify fica em /site (Base Directory = /site).
+# =========================================================
+
+# ---------- Segredos e configurações locais ----------
+# Nunca enviar tokens, senhas ou chaves (Chatwoot, n8n, SMTP, APIs)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credenciais/
+*credenciais*
+*secret*
+# Exports do n8n já preenchidos com token (mantenha só o modelo sem token)
+n8n/*-preenchido.json
+n8n/*.local.json
+n8n/credentials*.json
+
+# ---------- Dependências e builds (projeto React antigo na raiz) ----------
+node_modules/
+dist/
+dist-preview/
+build/
+.vite/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+
+# ---------- Logs e arquivos temporários ----------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+tmp/
+temp/
+
+# ---------- Sistema operacional ----------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+# Linux
+.directory
+.Trash-*
+
+# ---------- Editores e IDEs ----------
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# ---------- Arquivos pesados de design e mídia bruta ----------
+# Fontes de arte e exportações grandes ficam fora do Git (guardar no Drive)
+*.psd
+*.ai
+*.fig
+*.sketch
+*.xd
+*.zip
+*.rar
+*.7z
+*.mov
+*.mp4
+!site/assets/videos/*.mp4
+
+# ---------- Lixo herdado da cópia do template ----------
+# Arquivos .html vazios criados ao baixar o template do site de demonstração
+site/assets/images/**/*.html
+flex-it/assets/images/**/*.html
+flex-it/${$(this.html
+flex-it/a.params.html
+flex-it/e.html
+flex-it/GET.html
+flex-it/Error pJS - No image.html
+
+# ---------- Opcional: descomente se quiser tirar do GitHub ----------
+# Template original (referência, não é publicado; ~12 MB e com licença a confirmar)
+# flex-it/
+# Documentos internos (pendências e leia-me)
+# documentacao-site/
