@@ -1,10 +1,8 @@
-# Não publicar arquivos internos nem o que o site não usa
+# Arquivos que não entram na imagem do site
+# (o nginx.conf PRECISA entrar: o Dockerfile copia ele para a configuração do nginx)
 .git
-.gitignore
-Dockerfile
-.dockerignore
-nginx.conf
 *.md
 assets/videos
 css/main-RTL.css
 **/*.html.bak
+assets/images/**/*.html
